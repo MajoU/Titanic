@@ -1,8 +1,8 @@
 library(data.table)
-#library(rattle)
-#library(rpart)
-#library(RColorBrewer)
-#library(rpart.plot)
+library(rattle)
+library(rpart)
+library(RColorBrewer)
+library(rpart.plot)
 library(party)
 library(caret)
 library(randomForest)
@@ -38,15 +38,10 @@ tes[is.na(Fare), Fare := median(tes$Fare, na.rm=T)]
 # Sex !! transform string to number factor by ifelse function
 tr[, Sex := as.factor(ifelse(Sex %in% 'female', 1, 0))]
 tes[, Sex := as.factor(ifelse(Sex %in% 'female', 1, 0))]
-# Names !!!
-tr[grep("Mr\\.", Name),]
-nick <- c("Dr", "Master", "Mrs", "Miss", "Mr")
-lapply(nick, function(x) tr[grep(paste0(x, "\\.") , Name), Name := x])
 # model
-ctrl <- trainControl(method = "repeatedcv", repeats = 3)
 model <- train(Survived ~ Sex + Pclass + Embarked + SibSp +
                     Parch + Fare + Age, data = tr,
-                    method="glm", trControl = ctrl)
+                    method="glm")
 #model <- cforest(Survived ~ Sex + Pclass +  
 #                    Parch + Fare + Age, data =
 #                    tr,controls=cforest_unbiased(ntree=2000, mtry=3))
@@ -72,15 +67,59 @@ model <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare +
 fancyRpartPlot(fit)
 Prediction <- predict(fit, tes, type = "class")
 
-###################################
-########## FUNCTION FOR EXTRACTION
-###################################
+############################################
+########## COMBINATION and work with STRINGS
+############################################
 
-knn <- train(Survived ~ Sex + Pclass + 
-               SibSp + Parch + Fare + 
-               Age , data = tr,
-                method = "knn", preProcess = c("center", "scale"),
-                  tuneLength = 10, trControl = trainControl(method = "repeatedcv"))
-pred <- predict(knn, newdata=tes)
-submiss <-  tes[,list(PassengerId, Survived=pred)]
+
+tes <- fread("./test.csv")
+tr <-  fread("./train.csv")
+tes$Survived <- NA
+com <- rbind(tr, tes)
+com$Title = sapply(com$Name, function(x) {strsplit(x, "[,.]")[[1]][2]})
+com$Title = sub(' ', '', com$Title)
+nick <- c("Dr|Master|Mrs|Miss|Mr")
+com[!grep(nick, Title), Title := "Others"]
+com$Title <- as.factor(com$Title)
+com$Family <- com$SibSp + com$Parch + 1
+com[Embarked == "", Embarked := "S"]
+com[, Embarked := as.factor(Embarked)]
+com[, Survived := as.factor(Survived)]
+com[is.na(Age), Age := tr[Pclass == 3 & !is.na(Age), median(Age)]]
+com[is.na(Fare), Fare := median(tes$Fare, na.rm=T)]
+com$Fare <- cut2(com$Fare, c(10,20,30,80))
+#com[, Sex := as.factor(ifelse(Sex %in% 'female', 1, 0))]
+train <- com[1:891,]
+test <- com[892:1309,]
+model <- glm(Survived ~ SibSp + Fare + Embarked + Family + Title + Pclass + Sex + Age, data=train, family=binomial("logit"))
+anova(model, test="Chisq")
+
+#model <- rpart(Survived ~ Pclass + Title + Family + Sex + Age + SibSp +
+#               Parch + Fare + Embarked, data=train, method="class")
+#prediction <- predict(model, test, type = "class")
+#fancyRpartPlot(model)
+# primarny model
+model <- train(Survived ~ SibSp + Embarked + Sex + Pclass +
+               Family + Fare + Age + Title, data=train, method="glm")
+
+# testovaci model
+model <- glm(Survived ~ SibSp + Fare + Embarked + Family + Title + Pclass + Sex + Age, data=train, family=binomial("logit"))
+anova(model, test="Chisq")
+
+# overovaci model
+model <- train(Survived ~ SibSp + Embarked + Sex + Pclass +
+               Family + Fare + Age + Title, data=train, method="rf")
+submiss <-  test[,list(PassengerId, Survived=prediction)]
 write.table(submiss, file = "submission.csv", col.names = TRUE, row.names = FALSE, sep = ",")
+########################
+###### TEXT Manipulation
+########################
+# selected names transform to com$Name
+lapply(nick, function(x) com[grep(paste0(x, "\\.") , Name), Name := x])
+# find names with whole word and "." at the end of word
+com[grep("\\b\\.", Name), Name]
+# find everthing except name in vector 'nick'
+nick <- c("Dr","Master","Mrs","Miss","Mr")
+lapply(nick, function(x) com[grep(paste0("[^", x,"]"), Name),])
+
+
