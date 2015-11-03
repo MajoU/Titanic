@@ -154,12 +154,12 @@ model <- rpart(Survived ~ Pclass + Title + Family + Sex + Age + Embarked
 ###### TEXT Manipulation
 ########################
 
+nick <- c("Dr","Master","Mrs","Miss","Mr")
 # selected names transform to com$Name
 lapply(nick, function(x) com[grep(paste0(x, "\\.") , Name), Name := x])
 # find names with whole word and "." at the end of word
 com[grep("\\b\\.", Name), Name]
 # find everthing except name in vector 'nick'
-nick <- c("Dr","Master","Mrs","Miss","Mr")
 lapply(nick, function(x) com[grep(paste0("[^", x,"]"), Name),])
 
 ########################
@@ -214,3 +214,5 @@ model <- randomForest(Survived ~ Fare + Age + SibSp + Family + Pclass.3 +
                Sex.male + Title.Mr + Embarked.S + Title.Miss + Title.Mrs,
                 data=train, importance=TRUE, ntree=1000) 
 varImpPlot(model)
+
+# testing
